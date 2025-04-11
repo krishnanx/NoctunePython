@@ -1,63 +1,94 @@
 import yt_dlp as youtube_dl
-from fastapi import FastAPI, Response, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+import asyncio
+import subprocess
+import tempfile
 import os
 import uuid
-import asyncio
-from concurrent.futures import ProcessPoolExecutor
-
+import unicodedata
 app = FastAPI()
-executor = ProcessPoolExecutor()
 
-def download_and_convert(url: str, filename: str) -> bytes:
-    """Download YouTube audio and return MP3 content"""
-    try:
-        base_output = f"/tmp/{filename}"  # no extension
-        final_output_path = f"{base_output}.mp3"
 
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': base_output,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'noplaylist': True,
-            'quiet': True,
+def sanitize_header_value(value: str):
+    return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+
+# STEP 1: Extract video info and return duration + direct URL
+def get_audio_info(url: str):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': True,
+        'extract_flat': False,
+    }
+    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        return {
+            "duration": info.get("duration"),  # in seconds
+            "title": info.get("title"),
+            "direct_url": info["url"],
         }
 
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+# STEP 2: Stream ffmpeg output in chunks
+def stream_ffmpeg_audio(input_url: str):
+    # Spawn ffmpeg to convert audio from the input URL
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-i", input_url,
+        "-vn",                 # no video
+        "-f", "mp3",
+        "-b:a", "192k",
+        "-hide_banner",
+        "-loglevel", "error",
+        "pipe:1"               # output to stdout
+    ]
+    process = subprocess.Popen(
+        ffmpeg_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
 
-        if not os.path.exists(final_output_path) or os.stat(final_output_path).st_size == 0:
-            raise ValueError("Downloaded file is empty!")
+    def generate():
+        try:
+            while True:
+                chunk = process.stdout.read(1024 * 32)  # 32 KB chunks
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            process.stdout.close()
+            process.kill()
 
-        with open(final_output_path, "rb") as f:
-            mp3_data = f.read()
-
-        os.remove(final_output_path)  # Clean up
-        return mp3_data
-
-    except Exception as e:
-        print("Error:", e)
-        raise HTTPException(status_code=500, detail=str(e))
-
+    return generate()
 
 @app.post("/yt")
-async def download_audio(request: Request):
+async def stream_audio(request: Request):
     try:
         body = await request.json()
         url = body["data"]
     except:
         raise HTTPException(status_code=400, detail="Invalid JSON. Expected {'data': '<youtube_url>'}")
 
-    filename = str(uuid.uuid4())
+    try:
+        info = await asyncio.to_thread(get_audio_info, url)
+    except Exception as e:
+        print("❌ yt_dlp error:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch metadata: {e}")
 
-    # Offload the blocking task
-    loop = asyncio.get_event_loop()
-    mp3_data = await loop.run_in_executor(executor, download_and_convert, url, filename)
+    try:
+        generator = stream_ffmpeg_audio(info["direct_url"])
+    except Exception as e:
+        print("❌ ffmpeg error:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to start ffmpeg stream: {e}")
 
-    return Response(content=mp3_data, media_type="audio/mpeg")
+    headers = {
+    "X-Audio-Duration": str(info["duration"]),
+    "X-Audio-Title": sanitize_header_value(info["title"])
+}
+
+
+    return StreamingResponse(generator, media_type="audio/mpeg", headers=headers)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7000, reload=False)
