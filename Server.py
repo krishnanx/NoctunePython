@@ -28,6 +28,8 @@ def get_audio_info(url: str):
             "duration": info.get("duration"),  # in seconds
             "title": info.get("title"),
             "direct_url": info["url"],
+            "thumbnail": info.get("thumbnail"),
+            "uploader": info.get("uploader")
         }
 
 # STEP 2: Stream ffmpeg output in chunks
@@ -66,7 +68,16 @@ def stream_ffmpeg_audio(input_url: str):
             process.kill()
 
     return generate()
-
+@app.post("/yt/meta")
+async def get_metadata(request: Request):
+    try:
+        body = await request.json()
+        url = body["data"]
+        info = await asyncio.to_thread(get_audio_info, url)
+        return info
+    except Exception as e:
+        print("❌ Metadata fetch error:", e)
+        raise HTTPException(status_code=500, detail=f"Metadata error: {e}")
 @app.post("/yt")
 async def stream_audio(request: Request):
     try:
