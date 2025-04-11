@@ -34,14 +34,19 @@ def get_audio_info(url: str):
 def stream_ffmpeg_audio(input_url: str):
     # Spawn ffmpeg to convert audio from the input URL
     ffmpeg_cmd = [
-        "ffmpeg",
-        "-i", input_url,
-        "-vn",                 # no video
-        "-f", "mp3",
-        "-b:a", "192k",
-        "-hide_banner",
-        "-loglevel", "error",
-        "pipe:1"               # output to stdout
+    "ffmpeg",
+    "-reconnect", "1",
+    "-reconnect_streamed", "1",
+    "-reconnect_delay_max", "2",
+    "-i", input_url,
+    "-vn",
+    "-acodec", "libmp3lame",
+    "-f", "mp3",
+    "-b:a", "192k",
+    "-fflags", "+genpts",
+    "-hide_banner",
+    "-loglevel", "error",
+    "pipe:1"
     ]
     process = subprocess.Popen(
         ffmpeg_cmd,
