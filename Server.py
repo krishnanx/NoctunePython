@@ -16,21 +16,26 @@ def sanitize_header_value(value: str):
 # STEP 1: Extract video info and return duration + direct URL
 def get_audio_info(url: str):
     ydl_opts = {
-        'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
         'extract_flat': False,
+        'force_generic_extractor': False,
+        'skip_download': True,
+        'simulate': True,
+        'extractor_args': {
+            'youtube': ['player_client=web']  # ← avoids innertube / Android logic
+        },
     }
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         return {
-            "duration": info.get("duration"),  # in seconds
             "title": info.get("title"),
-            "direct_url": info["url"],
+            "uploader": info.get("uploader"),
             "thumbnail": info.get("thumbnail"),
-            "uploader": info.get("uploader")
+            "duration": info.get("duration"),
         }
+
 
 # STEP 2: Stream ffmpeg output in chunks
 def stream_ffmpeg_audio(input_url: str):
