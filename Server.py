@@ -7,6 +7,9 @@ import tempfile
 import os
 import uuid
 import unicodedata
+import time 
+
+
 app = FastAPI()
 
 
@@ -21,19 +24,20 @@ def get_audio_info(url: str):
         'noplaylist': True,
         'extract_flat': False,
         'force_generic_extractor': False,
-        'skip_download': True,
-        'simulate': True,
+        'format': 'bestaudio/best',
         'extractor_args': {
-            'youtube': ['player_client=web']  # ← avoids innertube / Android logic
+            'youtube': ['player_client=web']
         },
     }
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
+
         return {
             "title": info.get("title"),
             "uploader": info.get("uploader"),
             "thumbnail": info.get("thumbnail"),
             "duration": info.get("duration"),
+            "direct_url": info["url"], 
         }
 
 
@@ -73,16 +77,26 @@ def stream_ffmpeg_audio(input_url: str):
             process.kill()
 
     return generate()
+
+
 @app.post("/yt/meta")
 async def get_metadata(request: Request):
+    start_time = time.time()  # Start the timer
     try:
         body = await request.json()
         url = body["data"]
         info = await asyncio.to_thread(get_audio_info, url)
+        
+        # Calculate the time taken
+        end_time = time.time()  # End the timer
+        duration = end_time - start_time
+        print(f"⏱️ Metadata fetch took {duration:.2f} seconds.")
+        
         return info
     except Exception as e:
         print("❌ Metadata fetch error:", e)
         raise HTTPException(status_code=500, detail=f"Metadata error: {e}")
+
 @app.post("/yt")
 async def stream_audio(request: Request):
     try:
