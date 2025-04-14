@@ -126,4 +126,4 @@ async def stream_audio(request: Request):
     return StreamingResponse(generator, media_type="audio/mpeg", headers=headers)
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7000, reload=False)
+    uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
