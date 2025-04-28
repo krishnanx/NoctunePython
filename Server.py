@@ -19,64 +19,52 @@ def sanitize_header_value(value: str):
 # STEP 1: Extract video info and return duration + direct URL
 def get_audio_info(url: str):
     ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'noplaylist': True,
-        'extract_flat': False,
-        'force_generic_extractor': False,
-        'format': 'bestaudio/best',
-        'extractor_args': {
-            'youtube': ['player_client=web']
-        },
+    'quiet': True,
+    'no_warnings': True,
+    'noplaylist': True,
+    'extract_flat': True,
+    'force_generic_extractor': False,
+    'format': 'bestaudio/best',
+    'external_downloader': 'aria2c',
+    'external_downloader_args': ['-x', '16', '-k', '1M'],  # 16 parallel downloads, 1MB chunks
+    'extractor_args': {
+        'youtube': ['player_client=android']
+    },
+    'socket_timeout': 10
     }
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-
+        if 'url' not in info:
+                raise ValueError("No audio URL found for the given video.")
         return {
-            "title": info.get("title"),
-            "uploader": info.get("uploader"),
-            "thumbnail": info.get("thumbnail"),
-            "duration": info.get("duration"),
+            # "title": info.get("title"),
+            # "uploader": info.get("uploader"),
+            # "thumbnail": info.get("thumbnail"),
+            # "duration": info.get("duration"),
             "direct_url": info["url"], 
         }
 
 
 # STEP 2: Stream ffmpeg output in chunks
-def stream_ffmpeg_audio(input_url: str):
-    # Spawn ffmpeg to convert audio from the input URL
+async def stream_ffmpeg_audio(input_url: str):
     ffmpeg_cmd = [
-    "ffmpeg",
-    "-reconnect", "1",
-    "-reconnect_streamed", "1",
-    "-reconnect_delay_max", "2",
-    "-i", input_url,
-    "-vn",
-    "-acodec", "libmp3lame",
-    "-f", "mp3",
-    "-b:a", "192k",
-    "-fflags", "+genpts",
-    "-hide_banner",
-    "-loglevel", "error",
-    "pipe:1"
+        "ffmpeg", "-probesize", "32k", "-analyzeduration", "0", "-reconnect", "1", 
+        "-reconnect_streamed", "1", "-reconnect_delay_max", "2", "-i", input_url, 
+        "-vn", "-acodec", "libmp3lame", "-f", "mp3", "-b:a", "192k", "-fflags", "+genpts", 
+        "-hide_banner", "-loglevel", "error", "pipe:1"
     ]
-    process = subprocess.Popen(
-        ffmpeg_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
+    
+    process = await asyncio.create_subprocess_exec(*ffmpeg_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
-    def generate():
-        try:
-            while True:
-                chunk = process.stdout.read(1024 * 32)  # 32 KB chunks
-                if not chunk:
-                    break
-                yield chunk
-        finally:
-            process.stdout.close()
-            process.kill()
+    async def generate():
+        while True:
+            chunk = await process.stdout.read(1024 * 8)  # 32 KB chunks
+            if not chunk:
+                break
+            yield chunk
 
     return generate()
+
 
 
 @app.post("/yt/meta")
@@ -99,6 +87,7 @@ async def get_metadata(request: Request):
 
 @app.post("/yt")
 async def stream_audio(request: Request):
+    start_time = time.time() 
     try:
         body = await request.json()
         url = body["data"]
@@ -112,18 +101,20 @@ async def stream_audio(request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to fetch metadata: {e}")
 
     try:
-        generator = stream_ffmpeg_audio(info["direct_url"])
+        generator = await stream_ffmpeg_audio(info["direct_url"])
     except Exception as e:
         print("❌ ffmpeg error:", e)
         raise HTTPException(status_code=500, detail=f"Failed to start ffmpeg stream: {e}")
 
-    headers = {
-    "X-Audio-Duration": str(info["duration"]),
-    "X-Audio-Title": sanitize_header_value(info["title"])
-}
+#     headers = {
+#     "X-Audio-Duration": str(info["duration"]),
+#     "X-Audio-Title": sanitize_header_value(info["title"])
+# }
 
-
-    return StreamingResponse(generator, media_type="audio/mpeg", headers=headers)
+    end_time = time.time()  # End the timer
+    duration = end_time - start_time
+    print(f"⏱️ Metadata fetch took {duration:.2f} seconds.")
+    return StreamingResponse(generator, media_type="audio/mpeg")
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
