@@ -48,7 +48,7 @@ def get_audio_info(url: str):
         raise ValueError(f"Metadata fetch error: {e}")
 
 # STEP 2: Stream audio via ffmpeg
-async def stream_ffmpeg_audio(input_url: str):
+def stream_ffmpeg_audio(input_url: str):
     """Launch ffmpeg to convert and stream audio."""
     ffmpeg_cmd = [
         "ffmpeg",
@@ -65,8 +65,11 @@ async def stream_ffmpeg_audio(input_url: str):
         "-loglevel", "error",
         "pipe:1"
     ]
-    
-    process = await asyncio.create_subprocess_exec(*ffmpeg_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    process = subprocess.Popen(
+        ffmpeg_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
 
     def generate():
         try:
