@@ -25,7 +25,7 @@ def get_audio_info(url: str):
                 "yt-dlp", "--quiet", "--no-warnings",
                 "--no-playlist", "--skip-download",
                 "--extractor-args", "youtube:player_client=android",
-                "--dump-json", url
+               "--print", "url", url
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -35,18 +35,12 @@ def get_audio_info(url: str):
         if result.returncode != 0:
             raise ValueError(f"yt-dlp error: {result.stderr.decode().strip()}")
 
-        info = json.loads(result.stdout)
+        direct_url = result.stdout.decode().strip()
 
-        if 'url' not in info:
-            raise ValueError("No direct audio URL found.")
+        if not direct_url.startswith("http"):
+            raise ValueError("Direct URL extraction failed.")
 
-        return {
-            # "title": info.get("title"),
-            # "uploader": info.get("uploader"),
-            # "thumbnail": info.get("thumbnail"),
-            # "duration": info.get("duration"),
-            "direct_url": info["url"],
-        }
+        return {"direct_url": direct_url}
 
     except subprocess.TimeoutExpired:
         raise ValueError("yt-dlp subprocess timed out.")
@@ -80,7 +74,7 @@ def stream_ffmpeg_audio(input_url: str):
     def generate():
         try:
             while True:
-                chunk = process.stdout.read(1024 * 32)  # 32 KB chunks
+                chunk = process.stdout.read(1024 * 8)  # 8 KB chunks
                 if not chunk:
                     break
                 yield chunk
@@ -143,7 +137,10 @@ async def stream_audio(request: Request):
     # }
 
     return StreamingResponse(generator, media_type="audio/mpeg")
-
+@app.get("/ping")
+def warmConnection():
+    print("Express says: ping")
+    return "pong"
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
