@@ -1,5 +1,5 @@
 import yt_dlp as youtube_dl  # Keep for ffmpeg reconnect options
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 import asyncio
 import subprocess
@@ -9,7 +9,7 @@ import uuid
 import unicodedata
 import time
 import json
-
+from Download import download_youtube_audio 
 app = FastAPI()
 
 def sanitize_header_value(value: str):
@@ -141,6 +141,28 @@ async def stream_audio(request: Request):
 def warmConnection():
     print("Express says: ping")
     return "pong"
+@app.post("/download")
+async def download(request: Request, client_id: str = Header(..., alias="client-id")):
+    try:
+        body = await request.json()
+        urls = body["data"]
+        print(1)
+        if not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
+            raise ValueError("Expected 'data' to be a list of YouTube URLs.")
+
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON. Expected {'data': ['url1', 'url2', ...]}")
+    print(2)
+    result = await download_youtube_audio(urls,client_id)
+
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    return JSONResponse({
+        "message": "All downloads complete",
+        "files": [os.path.basename(f) for f in result["files"]]
+    })
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
