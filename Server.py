@@ -10,6 +10,8 @@ import unicodedata
 import time
 import json
 from Download import download_youtube_audio 
+from spotify_meta import get_spotify_metadata
+
 app = FastAPI()
 
 def sanitize_header_value(value: str):
@@ -162,7 +164,21 @@ async def download(request: Request, client_id: str = Header(..., alias="client-
         "message": "All downloads complete",
         "files": [os.path.basename(f) for f in result["files"]]
     })
+@app.post("/spotify/meta")
+async def fetch_spotify_metadata(request: Request):
+    """Fetch metadata from a Spotify playlist using spotDL."""
+    try:
+        body = await request.json()
+        playlist_url = body.get("data")
+        if not playlist_url:
+            raise HTTPException(status_code=400, detail="Missing 'data' with Spotify playlist URL")
 
+        metadata = await asyncio.to_thread(get_spotify_metadata, playlist_url)
+        return JSONResponse(content=metadata)
+
+    except Exception as e:
+        print("spotDL error:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch metadata: {e}")
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
