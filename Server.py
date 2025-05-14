@@ -174,7 +174,8 @@ async def fetch_spotify_metadata(request: Request):
             raise HTTPException(status_code=400, detail="Missing 'data' with Spotify playlist URL")
 
         metadata = await asyncio.to_thread(get_spotify_metadata, playlist_url)
-        return JSONResponse(content=metadata)
+        print("lessgoo")
+        return metadata
 
     except Exception as e:
         print("spotDL error:", e)
