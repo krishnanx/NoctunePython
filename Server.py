@@ -11,8 +11,39 @@ import time
 import json
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-
+from Redis import storeData , CreateEmptyPlaylist,get_all_playlists_as_array
+import redis.asyncio as redis
+from dotenv import load_dotenv
+import asyncpg
 app = FastAPI()
+load_dotenv()
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+
+@app.on_event("startup")
+async def startup():
+    global redis_client
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+    redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+    global db_pool
+    # DATABASE_URL = os.getenv("DATABASE_URL")
+    try:
+        await redis_client.ping()
+        # db_pool = await asyncpg.create_pool(DATABASE_URL)
+        print("🔗 Connected to Redis")
+    except Exception as e:
+        print(f"Redis connection failed: {e}")
+
+@app.on_event("shutdown")
+async def shutdown():
+    if redis_client:
+        await redis_client.close()
+        await db_pool.close()
+        print("🔌 Redis connection closed")
+
+
 
 def sanitize_header_value(value: str):
     """Make header values safe ASCII."""
@@ -139,10 +170,12 @@ async def stream_audio(request: Request):
     # }
 
     return StreamingResponse(generator, media_type="audio/mpeg")
+
 @app.get("/ping")
 def warmConnection():
     print("Express says: ping")
     return "pong"
+
 @app.post("/download")
 async def download(request: Request, client_id: str = Header(..., alias="client-id")):
     try:
@@ -180,6 +213,42 @@ async def fetch_spotify_metadata(request: Request):
     except Exception as e:
         print("spotDL error:", e)
         raise HTTPException(status_code=500, detail=f"Failed to fetch metadata: {e}")
+@app.post("/playlist/Emptynew")
+async def add_new_playlist(request: Request):
+    try:
+        body = await request.json()
+        playlist = body.get("data")
+        if not playlist:
+            raise HTTPException(status_code=400, detail="Missing 'data' with playlist")
+        
+        response = await CreateEmptyPlaylist(redis_client,playlist)
+        if(response == "playlist exists"):
+            return 0
+        return 1
+    except Exception as e:
+        print(e)
+# @app.post("/playlist/new")
+# async def addPlaylistWithData(request: Request):
+#     try:
+#         body = await request.json()
+#         playlist = body.get("data")
+#         new_song = body.get("newsong")
+#         if not playlist:
+#             raise HTTPException(status_code=400, detail="Missing 'data' with playlist")
+        
+#         response = await CreatesandStoreData(redis_client,playlist,new_song)
+#         if(response == "playlist exists"):
+#             return 0
+#         return 1
+#     except Exception as e:
+#         print(e)
+@app.get("/playlist/get")
+async def pullplaylists():
+    try:
+        response = await get_all_playlists_as_array(redis_client)
+        return response
+    except Exception as e:
+        print(e)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
