@@ -218,10 +218,11 @@ async def add_new_playlist(request: Request):
     try:
         body = await request.json()
         playlist = body.get("data")
+        user = body.get("user")
         if not playlist:
             raise HTTPException(status_code=400, detail="Missing 'data' with playlist")
         
-        response = await CreateEmptyPlaylist(redis_client,playlist)
+        response = await CreateEmptyPlaylist(redis_client,playlist,user)
         if(response == "playlist exists"):
             return 0
         return 1
@@ -243,9 +244,11 @@ async def add_new_playlist(request: Request):
 #     except Exception as e:
 #         print(e)
 @app.get("/playlist/get")
-async def pullplaylists():
+async def pullplaylists( request: Request):
     try:
-        response = await get_all_playlists_as_array(redis_client)
+        body = await request.json()
+        user = body.get("user")
+        response = await get_all_playlists_as_array(redis_client,user)
         return response
     except Exception as e:
         print(e)
