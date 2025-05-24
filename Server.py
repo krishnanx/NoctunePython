@@ -11,7 +11,7 @@ import time
 import json
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import storeData , CreateEmptyPlaylist,get_all_playlists_as_array
+#from Redis import storeData , CreateEmptyPlaylist,get_all_playlists_as_array
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
@@ -50,35 +50,35 @@ def sanitize_header_value(value: str):
     return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
 
 # STEP 1: Extract metadata quickly using yt-dlp subprocess
-def get_audio_info(url: str):
-    """Fetch audio info using yt-dlp subprocess (faster)."""
-    try:
-        result = subprocess.run(
-            [
-                "yt-dlp", "--quiet", "--no-warnings",
-                "--no-playlist", "--skip-download",
-                "--extractor-args", "youtube:player_client=android",
-               "--print", "url", url
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=15
-        )
+# def get_audio_info(url: str):
+#     """Fetch audio info using yt-dlp subprocess (faster)."""
+#     try:
+#         result = subprocess.run(
+#             [
+#                 "yt-dlp", "--quiet", "--no-warnings",
+#                 "--no-playlist", "--skip-download",
+#                 "--extractor-args", "youtube:player_client=android",
+#                "--print", "url", url
+#             ],
+#             stdout=subprocess.PIPE,
+#             stderr=subprocess.PIPE,
+#             timeout=15
+#         )
 
-        if result.returncode != 0:
-            raise ValueError(f"yt-dlp error: {result.stderr.decode().strip()}")
+#         if result.returncode != 0:
+#             raise ValueError(f"yt-dlp error: {result.stderr.decode().strip()}")
 
-        direct_url = result.stdout.decode().strip()
+#         direct_url = result.stdout.decode().strip()
 
-        if not direct_url.startswith("http"):
-            raise ValueError("Direct URL extraction failed.")
+#         if not direct_url.startswith("http"):
+#             raise ValueError("Direct URL extraction failed.")
 
-        return {"direct_url": direct_url}
+#         return {"direct_url": direct_url}
 
-    except subprocess.TimeoutExpired:
-        raise ValueError("yt-dlp subprocess timed out.")
-    except Exception as e:
-        raise ValueError(f"Metadata fetch error: {e}")
+#     except subprocess.TimeoutExpired:
+#         raise ValueError("yt-dlp subprocess timed out.")
+#     except Exception as e:
+#         raise ValueError(f"Metadata fetch error: {e}")
 
 # STEP 2: Stream audio via ffmpeg
 def stream_ffmpeg_audio(input_url: str):
@@ -176,19 +176,20 @@ def warmConnection():
     print("Express says: ping")
     return "pong"
 
+
 @app.post("/download")
 async def download(request: Request, client_id: str = Header(..., alias="client-id")):
     try:
         body = await request.json()
-        urls = body["data"]
+        items = body["data"]
         print(1)
-        if not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
-            raise ValueError("Expected 'data' to be a list of YouTube URLs.")
-
+        if not isinstance(items, list) or not all(isinstance(item, dict) and "url" in item for item in items):
+            raise ValueError("Expected 'data' to be a list of objects with at least a 'url' field.")
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON. Expected {'data': ['url1', 'url2', ...]}")
+        raise HTTPException(status_code=400, detail="Invalid JSON. Expected {'data': [{url, title?, artist?, thumbnail?}, ...]}")
+
     print(2)
-    result = await download_youtube_audio(urls,client_id)
+    result = await download_youtube_audio(items, client_id)
 
     if result["status"] == "error":
         raise HTTPException(status_code=500, detail=result["error"])
@@ -197,6 +198,7 @@ async def download(request: Request, client_id: str = Header(..., alias="client-
         "message": "All downloads complete",
         "files": [os.path.basename(f) for f in result["files"]]
     })
+
 @app.post("/spotify/meta")
 async def fetch_spotify_metadata(request: Request):
     """Fetch metadata from a Spotify playlist using spotDL."""
@@ -218,11 +220,10 @@ async def add_new_playlist(request: Request):
     try:
         body = await request.json()
         playlist = body.get("data")
-        user = body.get("user")
         if not playlist:
             raise HTTPException(status_code=400, detail="Missing 'data' with playlist")
         
-        response = await CreateEmptyPlaylist(redis_client,playlist,user)
+        response = await CreateEmptyPlaylist(redis_client,playlist)
         if(response == "playlist exists"):
             return 0
         return 1
@@ -244,14 +245,13 @@ async def add_new_playlist(request: Request):
 #     except Exception as e:
 #         print(e)
 @app.get("/playlist/get")
-async def pullplaylists( request: Request):
+async def pullplaylists():
     try:
-        body = await request.json()
-        user = body.get("user")
-        response = await get_all_playlists_as_array(redis_client,user)
+        response = await get_all_playlists_as_array(redis_client)
         return response
     except Exception as e:
         print(e)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
+
