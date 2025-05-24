@@ -11,7 +11,7 @@ import time
 import json
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import storeData , CreateEmptyPlaylist,get_all_playlists_as_array
+from Redis import CreateEmptyPlaylist,get_all_playlists_as_array
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
@@ -243,11 +243,13 @@ async def add_new_playlist(request: Request):
 #         return 1
 #     except Exception as e:
 #         print(e)
-@app.get("/playlist/get")
+@app.post("/playlist/get")
 async def pullplaylists( request: Request):
     try:
+        print("reached playlist pull")
         body = await request.json()
         user = body.get("user")
+        print("user:",user)
         response = await get_all_playlists_as_array(redis_client,user)
         return response
     except Exception as e:
