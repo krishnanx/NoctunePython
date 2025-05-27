@@ -11,7 +11,7 @@ import time
 import json
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import CreateEmptyPlaylist,get_all_playlists_as_array
+from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
@@ -254,6 +254,19 @@ async def pullplaylists( request: Request):
         return response
     except Exception as e:
         print(e)
+@app.post("/playlist/addMusic")
+async def addMusic(request: Request):
+    try:
+        body = await request.json()
+        user = body.get("user")
+        playlist = body.get("data")
+        playlist_name = playlist["name"]
+        print("playlist name:", playlist_name)
+        new_song = body.get("music")
+        response = await storeData(redis_client,playlist_name,new_song,user)
+        return response
+    except Exception as e:
+        print("adding music to playlist didnt work",e)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
