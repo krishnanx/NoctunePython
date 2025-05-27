@@ -30,22 +30,33 @@ async def CreateEmptyPlaylist(redis_client, playlist,user):
         
     except Exception as e:
         print(f"Error storing data: {e}")
-# async def storeData(redis_client,playlist_name,new_song,user):
-#     try:
-#         key = f"user:{user}playlist:{playlist_name}"
-#         existing = await redis_client.get(key)
-#         if existing:
-#             playlist = json.loads(existing)
-#             song_id = str(len(playlist) + 1)
-#             playlist[song_id] = new_song
-#         else:
-#             playlist=[]
-#             await redis_client.sadd("playlists:set", playlist_name)
+async def storeData(redis_client,playlist_name,new_song,user):
+    try:
+        key = f"user:{user}:playlist:{playlist_name}"
+        existing = await redis_client.get(key)
+        if existing:
+            playlist = json.loads(existing)
+            print("playlist value: ",playlist)
+            playlist["songs"].append(new_song)
+        else:
+            playlist = {
+                "Time": None,
+                "desc": "",
+                "id": None,
+                "image": None,
+                "isPlaying": False,
+                "name": playlist_name,
+                "songs": [new_song]
+            }
+            await redis_client.sadd("playlists:set", playlist_name)
         
-#         await redis_client.set(key, json.dumps(playlist))
+        await redis_client.set(key, json.dumps(playlist))
+        return {"type":"success"}
         
-#     except Exception as e:
-#         print(e)
+    except Exception as e:
+        print(e)
+        return {"type": "error", "message": str(e)}
+
     
 # async def CreateEmptyPlaylist(redis_client,playlist):
 #     try:
@@ -63,21 +74,26 @@ async def CreateEmptyPlaylist(redis_client, playlist,user):
 #     except Exception as e:
 #         print(e)
 async def get_all_playlists_as_array(redis_client,user):
-    playlist_names = await redis_client.smembers(f"user:{user}:playlists:set")
-    playlists = []
-    
-    for name_bytes in playlist_names:
-        playlist_name = name_bytes.decode() if isinstance(name_bytes, bytes) else name_bytes
-        key = f"user:{user}:playlist:{playlist_name}"
-        data = await redis_client.get(key)
+    try:
+        print(user)
+        playlist_names = await redis_client.smembers(f"user:{user}:playlists:set")
+        print(playlist_names)
+        playlists = []
         
-        if data:
-            playlist_data = json.loads(data)
-        else:
-            playlist_data = []
-        
-        playlists.append({"name":playlist_name,"value": playlist_data})
-    
+        for name_bytes in playlist_names:
+            playlist_name = name_bytes.decode() if isinstance(name_bytes, bytes) else name_bytes
+            key = f"user:{user}:playlist:{playlist_name}"
+            data = await redis_client.get(key)
+            
+            if data:
+                playlist_data = json.loads(data)
+            else:
+                playlist_data = []
+            
+            playlists.append({"name":playlist_name,"value": playlist_data})
+        print(playlists)
+    except Exception as e:
+        print("error",e)
     return playlists
 
 
