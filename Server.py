@@ -180,6 +180,65 @@ def warmConnection():
 async def download(request: Request, client_id: str = Header(..., alias="client-id")):
     try:
         body = await request.json()
+        data = body["data"]
+        print(f"[DEBUG] Received data: {data}")
+        print(f"[DEBUG] Data type: {type(data)}")
+        print(f"[DEBUG] Client ID: {client_id}")
+        
+        # Handle both list of URLs and list of objects with metadata
+        items = []
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, str):
+                    # Simple URL string - create basic item object
+                    items.append({
+                        "url": item,
+                        "title": f"Track_{len(items)}",
+                        "uploader": "Unknown Artist",
+                        "artist": None,
+                        "image": None
+                    })
+                elif isinstance(item, dict):
+                    # Already an object with metadata - ensure required fields exist
+                    items.append({
+                        "url": item.get("url", ""),
+                        "title": item.get("title", f"Track_{len(items)}"),
+                        "uploader": item.get("uploader", "Unknown Artist"),
+                        "artist": item.get("artist"),
+                        "image": item.get("image")
+                    })
+                else:
+                    raise ValueError(f"Invalid item type: {type(item)}. Expected string URL or object.")
+        else:
+            raise ValueError("Expected 'data' to be a list of URLs or objects.")
+        
+        print(f"[DEBUG] Processed {len(items)} items for download")
+        
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Missing 'data' field in request body")
+    except Exception as e:
+        print(f"[ERROR] Request parsing error: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid request format: {str(e)}")
+
+    try:
+        result = await download_youtube_audio(items, client_id)
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=500, detail=result["error"])
+
+        return JSONResponse({
+            "message": "All downloads complete",
+            "files": [os.path.basename(f) for f in result["files"]],
+            "status": "success"
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Download processing error: {e}")
+        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
+
+
+    try:
+        body = await request.json()
         urls = body["data"]
         print(1)
         if not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
