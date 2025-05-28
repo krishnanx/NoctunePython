@@ -14,12 +14,6 @@ from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC
 EXPRESS_WS_URL = "ws://192.168.85.33:80/download-progress"
 
 def add_metadata_to_mp3(mp3_path, title, artist=None, album="YouTube Downloads", image_url=None):
-    # """Add metadata to MP3 file with better error handling"""
-    # print(f"[METADATA] Starting metadata addition for: {mp3_path}")
-    # print(f"[METADATA] Title: {title}")
-    # print(f"[METADATA] Artist: {artist}")
-    # print(f"[METADATA] Album: {album}")
-    # print(f"[METADATA] Image URL: {image_url}")
     
     try:
         # Check if file exists
@@ -92,21 +86,6 @@ def add_metadata_to_mp3(mp3_path, title, artist=None, album="YouTube Downloads",
         # Save the tags
         audio.save()
         print(f"[METADATA] Successfully saved metadata to: {mp3_path}")
-        
-        # Verify the metadata was saved
-        # try:
-        #     verify_audio = MP3(mp3_path, ID3=ID3)
-        #     if verify_audio.tags:
-        #         print(f"[METADATA VERIFY] Title: {verify_audio.tags.get('TIT2', 'Not set')}")
-        #         print(f"[METADATA VERIFY] Artist: {verify_audio.tags.get('TPE1', 'Not set')}")
-        #         print(f"[METADATA VERIFY] Album: {verify_audio.tags.get('TALB', 'Not set')}")
-        #         print(f"[METADATA VERIFY] Has cover art: {'APIC:Cover' in verify_audio.tags}")
-        #     else:
-        #         print("[METADATA VERIFY] No tags found after saving!")
-        # except Exception as e:
-        #     print(f"[METADATA VERIFY] Error verifying metadata: {e}")
-            
-        # return True
         
     except Exception as e:
         print(f"[METADATA ERROR] Failed to add metadata: {e}")
