@@ -339,76 +339,11 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
 
-# @app.post("/yt/waveform")
-# async def get_waveform(request: Request):
-#     try:
-#         body = await request.json()
-#         yt_url = body.get("data")
-#         direct_url = get_direct_audio_url(yt_url)
-#         waveform = extract_waveform_array(direct_url)
-#         return {"waveform": waveform}
-#     except Exception as e:
-#         print("Waveform error:", e)
-#         raise HTTPException(status_code=500, detail=f"Waveform error: {str(e)}")
-
-# def get_direct_audio_url(yt_url):
-#     ydl_opts = {
-#         'quiet': True,
-#         'format': 'bestaudio[ext=webm]/bestaudio',
-#         'noplaylist': True,
-#     }
-#     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-#         info = ydl.extract_info(yt_url, download=False)
-#         return info['url']
-
-# def extract_waveform_array(audio_url):
-#     with tempfile.NamedTemporaryFile(suffix=".raw") as tmpfile:
-#         raw_path = tmpfile.name
-
-#         # Run ffmpeg to extract raw audio
-#         cmd = [
-#             "ffmpeg", "-y", "-i", audio_url,
-#             "-f", "s16le",
-#             "-acodec", "pcm_s16le",
-#             "-ac", "1",
-#             "-ar", "8000",
-#             "-loglevel", "quiet",
-#             raw_path,
-#         ]
-#         subprocess.run(cmd, check=True)
-
-#         with open(raw_path, "rb") as f:
-#             pcm_data = np.frombuffer(f.read(), dtype=np.int16)
-#             abs_amplitude = np.abs(pcm_data)
-
-#             segment_size = len(abs_amplitude) // 200
-#             waveform = [
-#                 int(np.mean(abs_amplitude[i:i + segment_size]) / 32767 * 100)
-#                 for i in range(0, len(abs_amplitude), segment_size)
-#             ]
-#             return waveform[:200]
-
-# @app.post("/yt/waveform")
-# async def get_waveform(request: Request):
-#     try:
-#         body = await request.json()
-#         yt_url = body.get("data")
-#         if not yt_url:
-#             raise HTTPException(status_code=400, detail="Missing 'data' (YouTube URL)")
-
-#         direct_url = get_direct_audio_url(yt_url)
-#         waveform = extract_waveform_array(direct_url)
-#         return {"waveform": waveform}
-
-#     except Exception as e:
-#         print("Waveform error:", e)
-#         raise HTTPException(status_code=500, detail=f"Waveform error: {str(e)}")
-
 # Blocking function
 def get_direct_audio_url(yt_url):
     ydl_opts = {
         'quiet': True,
-        'format': 'bestaudio[ext=webm]/bestaudio',
+        'format': 'bestaudio[ext=m4a]/bestaudio/best', #[ext=webm
         'noplaylist': True,
     }
     with YoutubeDL(ydl_opts) as ydl:
@@ -459,12 +394,16 @@ async def get_waveform(request: Request):
     start_time = time.time()
     try:
         body = await request.json()
+        
         yt_url = body.get("data")
         if not yt_url:
             raise HTTPException(status_code=400, detail="Missing 'data' (YouTube URL)")
 
-        #waveform = await generate_waveform(yt_url)
+        
         waveform = await generate_waveform_cached(yt_url, redis_client)
+        if not waveform:
+            waveform = await generate_waveform(yt_url)
+            await redis_client.set(yt_url, json.dumps(waveform))
         end_time = time.time()  # ✅ End timer
         duration = end_time - start_time
         print(f"⏱️ Waveform generation took {duration:.2f} seconds.")
