@@ -20,7 +20,7 @@ async def generate_waveform_cached(yt_url, redis_client):
 
     waveform = await asyncio.get_event_loop().run_in_executor(None, task)
 
-    # 3. Save to Redis (optional: set TTL)
+    # 3. Save to Redis 
     await redis_client.set(cache_key, json.dumps(waveform))
     print("✅ Cached waveform in Redis")
 
