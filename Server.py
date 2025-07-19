@@ -12,7 +12,7 @@ import json
 import yt_dlp
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData
+from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
@@ -296,6 +296,24 @@ async def add_new_playlist(request: Request):
         return 1
     except Exception as e:
         print(e)
+
+@app.post("/playlist/editPlaylist")
+async def edit_playlist(request: Request):
+    try:
+        body = await request.json()
+        playlist = body.get("playlist")
+        user = body.get("user")
+        if not playlist or not user:
+            raise HTTPException(status_code=400, detail="Missing playlist or user")
+
+        # Call your Redis function
+        response = await EditPlaylist(redis_client, playlist, user)
+        return {"status": "success", "playlist": response}
+
+    except Exception as e:
+        print(f"Error in edit_playlist: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # @app.post("/playlist/new")
 # async def addPlaylistWithData(request: Request):
 #     try:

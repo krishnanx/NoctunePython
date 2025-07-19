@@ -30,6 +30,42 @@ async def CreateEmptyPlaylist(redis_client, playlist,user):
         
     except Exception as e:
         print(f"Error storing data: {e}")
+
+async def EditPlaylist(redis_client, playlist, user):
+    try:
+        playlist_name = playlist.get("name")
+        playlist_image = playlist.get("image")
+        playlist_desc  = playlist.get("desc")
+        playlist_songs = playlist.get("songs")
+        playlist_id    = playlist.get("id")
+        playlist_time = playlist.get("Time")  
+        playlist_isPlaying = playlist.get("isPlaying")
+
+        key = f"user:{user}:playlist:{playlist_name}"
+        existing = await redis_client.get(key)
+
+        if not existing:
+            # No playlist found with this name
+            return "not_found"
+
+        # Overwrite with new details
+        updated_playlist = {
+            "id": playlist_id,
+            "image": playlist_image,
+            "name": playlist_name,
+            "desc": playlist_desc,
+            "songs": playlist_songs,
+            "Time": playlist_time,
+            "isPlaying": playlist_isPlaying
+        }
+
+        await redis_client.set(key, json.dumps(updated_playlist))
+        return "updated"
+
+    except Exception as e:
+        print(f"Error editing data: {e}")
+        return {"type": "error", "message": str(e)}
+
 async def storeData(redis_client,playlist_name,new_song,user):
     try:
         key = f"user:{user}:playlist:{playlist_name}"
