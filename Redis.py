@@ -92,8 +92,30 @@ async def storeData(redis_client,playlist_name,new_song,user):
     except Exception as e:
         print(e)
         return {"type": "error", "message": str(e)}
-
     
+async def persistMusics(redis_client,searchedMusics,user):
+    try:
+        key = f"user:{user}:searched"
+        print(searchedMusics)
+        await redis_client.set(key, json.dumps(searchedMusics))
+    except Exception as e:
+        print(e)
+import json
+
+async def getpersistMusics(redis_client, user):
+    try:
+        key = f"user:{user}:searched"
+
+        existing = await redis_client.get(key)
+        if existing is not None:
+            searched = existing.decode("utf-8")  # decode bytes to str
+            print(searched)
+            return searched
+        else:
+            return "[]"  # or return an empty list as JSON string
+    except Exception as e:
+        print("Error:", e)
+        return "[]"
 # async def CreateEmptyPlaylist(redis_client,playlist):
 #     try:
 #         playlist_name = playlist.get("name")

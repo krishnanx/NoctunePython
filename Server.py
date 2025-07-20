@@ -12,7 +12,7 @@ import json
 import yt_dlp
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist
+from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist,persistMusics,getpersistMusics
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
@@ -20,7 +20,7 @@ from yt_dlp import YoutubeDL
 from Waveform import extract_waveform_array,get_direct_audio_url
 import numpy as np
 from redis_cache import generate_waveform_cached
-
+ 
 
 
 app = FastAPI()
@@ -353,9 +353,35 @@ async def addMusic(request: Request):
         return response
     except Exception as e:
         print("adding music to playlist didnt work",e)
+
+@app.post("/redis/searchedMusic")
+async def addsearchedMusic(request:Request):
+    try:
+        body = await request.json()
+        user = body.get("user")
+        searchedMusics = body.get("data")
+        
+        
+        response = await persistMusics(redis_client,searchedMusics,user)
+        return response
+    except Exception as e:
+        print("adding music to playlist didnt work",e)
+
+@app.post("/redis/getsearchedMusic")
+async def getSearchedMusics(request:Request):
+    try:
+        body = await request.json()
+        user = body.get("user")
+
+        response = await getpersistMusics(redis_client,user)
+        return response
+    except Exception as e:
+        print(e)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
+
+
 
 # Blocking function
 def get_direct_audio_url(yt_url):
