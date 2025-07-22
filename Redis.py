@@ -7,7 +7,7 @@ async def CreateEmptyPlaylist(redis_client, playlist,user):
         playlist_desc= playlist.get("desc")
         playlist_songs= playlist.get("songs")
         playlist_id= playlist.get("id")
-        playlist_time= playlist.get("time")
+        playlist_time= playlist.get("Time")
         playlist_isPlaying= playlist.get("isPlaying")
         key = f"user:{user}:playlist:{playlist_name}"
         existing = await redis_client.get(key)
@@ -31,39 +31,38 @@ async def CreateEmptyPlaylist(redis_client, playlist,user):
     except Exception as e:
         print(f"Error storing data: {e}")
 
-async def EditPlaylist(redis_client, playlist, user):
+async def EditPlaylist(redis_client, playlist, user, original_name=None):
     try:
         playlist_name = playlist.get("name")
-        playlist_image = playlist.get("image")
-        playlist_desc  = playlist.get("desc")
-        playlist_songs = playlist.get("songs")
-        playlist_id    = playlist.get("id")
-        playlist_time = playlist.get("Time")  
-        playlist_isPlaying = playlist.get("isPlaying")
-
-        key = f"user:{user}:playlist:{playlist_name}"
+        # Use original name for lookup if provided
+        lookup_name = original_name or playlist_name
+        
+        key = f"user:{user}:playlist:{lookup_name}"
         existing = await redis_client.get(key)
 
         if not existing:
-            # No playlist found with this name
-            return "not_found"
+            return {"type": "error", "message": "Playlist not found"}
 
-        # Overwrite with new details
+        # If name changed, delete old key and create new one
+        new_key = f"user:{user}:playlist:{playlist_name}"
+        if key != new_key:
+            await redis_client.delete(key)
+        
+        # Save updated playlist
         updated_playlist = {
-            "id": playlist_id,
-            "image": playlist_image,
+            "id": playlist.get("id"),
+            "image": playlist.get("image"),
             "name": playlist_name,
-            "desc": playlist_desc,
-            "songs": playlist_songs,
-            "Time": playlist_time,
-            "isPlaying": playlist_isPlaying
+            "desc": playlist.get("desc"),
+            "songs": playlist.get("songs", []),
+            "Time": playlist.get("Time", 0),
+            "isPlaying": playlist.get("isPlaying", False)
         }
-
-        await redis_client.set(key, json.dumps(updated_playlist))
-        return "updated"
-
+        
+        await redis_client.set(new_key, json.dumps(updated_playlist))
+        return {"type": "success", "message": "updated", "playlist": updated_playlist}
+        
     except Exception as e:
-        print(f"Error editing data: {e}")
         return {"type": "error", "message": str(e)}
 
 async def storeData(redis_client,playlist_name,new_song,user):
