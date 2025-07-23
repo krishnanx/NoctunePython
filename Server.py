@@ -303,17 +303,17 @@ async def edit_playlist(request: Request):
         body = await request.json()
         playlist = body.get("playlist")
         user = body.get("user")
+        original_name = body.get("originalName")  # 👈 handle originalName from frontend
+
         if not playlist or not user:
             raise HTTPException(status_code=400, detail="Missing playlist or user")
 
-        # Call your Redis function
-        response = await EditPlaylist(redis_client, playlist, user)
-        return {"status": "success", "playlist": response}
+        response = await EditPlaylist(redis_client, playlist, user, original_name)
+        return response  # send the response directly
 
     except Exception as e:
         print(f"Error in edit_playlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 # @app.post("/playlist/new")
 # async def addPlaylistWithData(request: Request):
 #     try:
