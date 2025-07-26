@@ -96,10 +96,9 @@ async def persistMusics(redis_client,searchedMusics,user):
     try:
         key = f"user:{user}:searched"
         print(searchedMusics)
-        await redis_client.set(key, json.dumps(searchedMusics))
+        await redis_client.set(key, json.dumps(searchedMusics), ex=86400)
     except Exception as e:
         print(e)
-import json
 
 async def getpersistMusics(redis_client, user):
     try:

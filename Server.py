@@ -33,8 +33,9 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 async def startup():
     global redis_client
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6380))
     redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+    print("Connected to Redis at:", redis_client.connection_pool.connection_kwargs)
     global db_pool
     # DATABASE_URL = os.getenv("DATABASE_URL")
     try:
@@ -435,6 +436,7 @@ async def generate_waveform(yt_url):
 
 @app.post("/yt/waveform")
 async def get_waveform(request: Request):
+    print("waveform")
     start_time = time.time()
     try:
         body = await request.json()

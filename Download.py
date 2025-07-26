@@ -12,7 +12,7 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC
 
 #EXPRESS_WS_URL = Constants.expoConfig.extra.SERVER.replace("http", "ws")/download-progress;
-EXPRESS_WS_URL = "ws://192.168.1.11:80/download-progress"
+EXPRESS_WS_URL = "ws://127.0.0.1:80/download-progress"
 
 def add_metadata_to_mp3(mp3_path, title, artist=None, album="YouTube Downloads", image_url=None):
     
@@ -175,6 +175,7 @@ async def download_youtube_audio(items: list[dict], client_id: str):
                         match = re.search(r"\[download\]\s+(\d{1,3}\.\d)%", decoded_line)
                         if match:
                             percent = match.group(1)
+                            print(percent)
                             await ws.send(json.dumps({
                                 "type": "progress",
                                 "value": {"index": index, "percent": percent},
