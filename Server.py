@@ -20,13 +20,16 @@ from yt_dlp import YoutubeDL
 from Waveform import extract_waveform_array,get_direct_audio_url
 import numpy as np
 from redis_cache import generate_waveform_cached
- 
+from pydantic import BaseModel
+import lyricsgenius
+
 
 
 app = FastAPI()
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GENIUS_API_TOKEN = os.getenv("GENIUS_API_TOKEN")
 
 
 @app.on_event("startup")
@@ -459,4 +462,28 @@ async def get_waveform(request: Request):
     except Exception as e:
         print("Waveform error:", e)
         raise HTTPException(status_code=500, detail=f"Waveform error: {str(e)}")
+    
 
+genius = lyricsgenius.Genius(
+    GENIUS_API_TOKEN,
+    timeout=15,                     # maximum time (in seconds) to wait for a response
+    retries=3,                      # no.of retry to make
+    remove_section_headers=True,
+    skip_non_songs=True,
+)
+
+class LyricsRequest(BaseModel):
+    artist: str
+    title: str
+
+@app.post("/api/lyrics")
+async def fetch_lyrics(req: LyricsRequest):
+    try:
+        print("fn called")
+        song = genius.search_song(title=req.title, artist=req.artist)
+        if song and song.lyrics:
+            return {"lyrics": song.lyrics}
+        else:
+            return {"error": "Lyrics not found"}
+    except Exception as e:
+        return {"error": str(e)}
