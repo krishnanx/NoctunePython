@@ -73,6 +73,7 @@ async def storeData(redis_client,playlist_name,new_song,user):
             playlist = json.loads(existing)
             print("playlist value: ",playlist)
             playlist["songs"].append(new_song)
+            playlist["Time"] = playlist["Time"] + new_song["duration"]
         else:
             playlist = {
                 "Time": None,
@@ -84,7 +85,7 @@ async def storeData(redis_client,playlist_name,new_song,user):
                 "songs": [new_song]
             }
             await redis_client.sadd("playlists:set", playlist_name)
-        
+        print("Playlist after adding song:",playlist)
         await redis_client.set(key, json.dumps(playlist))
         return {"type":"success"}
         
@@ -96,7 +97,7 @@ async def persistMusics(redis_client,searchedMusics,user):
     try:
         key = f"user:{user}:searched"
         print(searchedMusics)
-        await redis_client.set(key, json.dumps(searchedMusics), ex=86400)
+        await redis_client.set(key, json.dumps(searchedMusics), ex=432000)
     except Exception as e:
         print(e)
 
