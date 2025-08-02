@@ -12,7 +12,7 @@ import json
 import yt_dlp
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist,persistMusics,getpersistMusics
+from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist,persistMusics,getpersistMusics,deletepersistMusics
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
@@ -385,7 +385,18 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
 
-
+@app.post("/redis/deletepersistMusic")
+async def delete_persist_music(request:Request):
+    try:
+        body = await request.json()
+        user = body.get("user")
+        if not user:
+            return {"success": False, "error": "Missing user ID"}
+        response = await deletepersistMusics(redis_client, user)
+        return response
+    except Exception as e:
+        print("Error in delete_persist_music:", e)
+        return {"success": False, "error": str(e)}
 
 # Blocking function
 def get_direct_audio_url(yt_url):
