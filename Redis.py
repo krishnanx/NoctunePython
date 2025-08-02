@@ -114,6 +114,15 @@ async def getpersistMusics(redis_client, user):
     except Exception as e:
         print("Error:", e)
         return "[]"
+    
+async def deletepersistMusics(redis_client, user):
+    try:
+        key = f"user:{user}:searched"
+        await redis_client.delete(key)
+        return {"success": True}
+    except Exception as e:
+         print("Error:",e)
+         return {"success": False }
 # async def CreateEmptyPlaylist(redis_client,playlist):
 #     try:
 #         playlist_name = playlist.get("name")
