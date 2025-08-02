@@ -1,5 +1,5 @@
 import yt_dlp as youtube_dl  # Keep for ffmpeg reconnect options
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, HTTPException, Request, Header, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 import asyncio
 import subprocess
@@ -12,7 +12,7 @@ import json
 import yt_dlp
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist,persistMusics,getpersistMusics,deletepersistMusics
+from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist,persistMusics,getpersistMusics,deletepersistMusics,save_migrate_data_into_redis_temp,get_migrate_data_from_redis_temp
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
@@ -31,6 +31,18 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GENIUS_API_TOKEN = os.getenv("GENIUS_API_TOKEN")
 
+
+genius = lyricsgenius.Genius(
+    GENIUS_API_TOKEN,
+    timeout=15,                     # maximum time (in seconds) to wait for a response
+    retries=3,                      # no.of retry to make
+    remove_section_headers=True,
+    skip_non_songs=True,
+)
+
+class LyricsRequest(BaseModel):
+    artist: str
+    title: str
 
 @app.on_event("startup")
 async def startup():
@@ -275,12 +287,15 @@ async def fetch_spotify_metadata(request: Request):
     try:
         body = await request.json()
         playlist_url = body.get("data")
+        user = body.get("user")
+        print("spotify url:",playlist_url)
+        print("user",user)
         if not playlist_url:
             raise HTTPException(status_code=400, detail="Missing 'data' with Spotify playlist URL")
 
-        metadata = await asyncio.to_thread(get_spotify_metadata, playlist_url)
+        metadata = await get_spotify_metadata(playlist_url,user)
         print("lessgoo")
-        return metadata
+        return {"status":True}
 
     except Exception as e:
         print("spotDL error:", e)
@@ -381,6 +396,65 @@ async def getSearchedMusics(request:Request):
         return response
     except Exception as e:
         print(e)
+
+
+@app.post("/api/lyrics")
+async def fetch_lyrics(req: LyricsRequest):
+    try:
+        print("fn called")
+        song = genius.search_song(title=req.title, artist=req.artist)
+        if song and song.lyrics:
+            return {"lyrics": song.lyrics}
+        else:
+            return {"error": "Lyrics not found"}
+    except Exception as e:
+        return {"error": str(e)}
+@app.post("/api/save")
+
+async def save_data(request: Request):
+    body = await request.json()
+    client_id = body.get("clientId")
+    data = body.get("data")
+
+    # Save the data (e.g., to Redis, database, etc.)
+    print(f"Saving data for client {client_id}: {data}")
+    response = await save_migrate_data_into_redis_temp(redis_client,data,client_id)
+
+
+    return {"status": "success", "message": "Data saved successfully"}
+@app.get("/api/check")
+async def check_pending_data(clientId: str = Query(...)):
+    response = await get_migrate_data_from_redis_temp(redis_client,client_id = clientId)
+    if response is not None:
+        return {"status":True,"response":response}
+    else:
+        return {"status":False,"response":response}
+
+@app.post("/yt/waveform")
+async def get_waveform(request: Request):
+    print("waveform")
+    start_time = time.time()
+    try:
+        body = await request.json()
+        
+        yt_url = body.get("data")
+        if not yt_url:
+            raise HTTPException(status_code=400, detail="Missing 'data' (YouTube URL)")
+
+        
+        waveform = await generate_waveform_cached(yt_url, redis_client)
+        if not waveform:
+            waveform = await generate_waveform(yt_url)
+            await redis_client.set(yt_url, json.dumps(waveform))
+        end_time = time.time()  # ✅ End timer
+        duration = end_time - start_time
+        print(f"⏱️ Waveform generation took {duration:.2f} seconds.")
+
+        return {"waveform": waveform}
+
+    except Exception as e:
+        print("Waveform error:", e)
+        raise HTTPException(status_code=500, detail=f"Waveform error: {str(e)}")
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
@@ -448,53 +522,6 @@ async def generate_waveform(yt_url):
 
     return await loop.run_in_executor(None, task)
 
-@app.post("/yt/waveform")
-async def get_waveform(request: Request):
-    print("waveform")
-    start_time = time.time()
-    try:
-        body = await request.json()
-        
-        yt_url = body.get("data")
-        if not yt_url:
-            raise HTTPException(status_code=400, detail="Missing 'data' (YouTube URL)")
 
-        
-        waveform = await generate_waveform_cached(yt_url, redis_client)
-        if not waveform:
-            waveform = await generate_waveform(yt_url)
-            await redis_client.set(yt_url, json.dumps(waveform))
-        end_time = time.time()  # ✅ End timer
-        duration = end_time - start_time
-        print(f"⏱️ Waveform generation took {duration:.2f} seconds.")
-
-        return {"waveform": waveform}
-
-    except Exception as e:
-        print("Waveform error:", e)
-        raise HTTPException(status_code=500, detail=f"Waveform error: {str(e)}")
     
 
-genius = lyricsgenius.Genius(
-    GENIUS_API_TOKEN,
-    timeout=15,                     # maximum time (in seconds) to wait for a response
-    retries=3,                      # no.of retry to make
-    remove_section_headers=True,
-    skip_non_songs=True,
-)
-
-class LyricsRequest(BaseModel):
-    artist: str
-    title: str
-
-@app.post("/api/lyrics")
-async def fetch_lyrics(req: LyricsRequest):
-    try:
-        print("fn called")
-        song = genius.search_song(title=req.title, artist=req.artist)
-        if song and song.lyrics:
-            return {"lyrics": song.lyrics}
-        else:
-            return {"error": "Lyrics not found"}
-    except Exception as e:
-        return {"error": str(e)}

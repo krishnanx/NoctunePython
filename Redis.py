@@ -161,6 +161,40 @@ async def get_all_playlists_as_array(redis_client,user):
         print("error",e)
     return playlists
 
+async def save_migrate_data_into_redis_temp(redis_client, data, client_id):
+    try:
+        # Define the Redis hash key
+        key = "hashMap:migratePlaylist"
 
+        # Use HSET to store the data for the given client_id in the hash map
+        await redis_client.hset(key, client_id, json.dumps(data))  # Serialize data using JSON
+
+        print(f"Data for client {client_id} successfully saved to Redis.")
+        return {"status": "success", "message": "Data saved to Redis."}
+
+    except Exception as e:
+        print(f"Error saving data for client {client_id}: {e}")
+        return {"status": "error", "message": str(e)}    
+
+    except Exception as e:
+        print("error".e)
+
+async def get_migrate_data_from_redis_temp(redis_client, client_id):
+    try:
+        key = "hashMap:migratePlaylist"
+
+        # Use HGET to retrieve the data for the given client_id
+        data = await redis_client.hget(key, client_id)
+
+        if data:
+            deserialized_data = json.loads(data)  # Deserialize JSON back to Python object
+            await redis_client.hdel(key, client_id)
+            return deserialized_data
+        else:
+            return None  # No data found for the given client_id
+
+    except Exception as e:
+        print(f"Error retrieving data for client {client_id}: {e}")
+        return None
 
 
