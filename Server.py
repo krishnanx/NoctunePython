@@ -522,6 +522,21 @@ async def generate_waveform(yt_url):
 
     return await loop.run_in_executor(None, task)
 
-
-    
-
+@app.get("/app-version")
+def get_app_version():
+    try:
+        base_dir = os.path.dirname(__file__)
+        json_path = os.path.join(base_dir, "config", "app_version.json")
+        
+        with open(json_path, "r") as f:
+            version_info = json.load(f)
+        
+        # Transform to match frontend expectation
+        return JSONResponse(content={
+            "version": version_info["latestVersion"],
+            "minSupportedVersion": version_info["minSupportedVersion"],
+            "forceUpdate": version_info["forceUpdate"],
+            "updateUrl": version_info["updateUrl"]
+        })
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
