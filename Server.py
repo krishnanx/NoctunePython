@@ -12,7 +12,7 @@ import json
 import yt_dlp
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist,persistMusics,getpersistMusics,deletepersistMusics,save_migrate_data_into_redis_temp,get_migrate_data_from_redis_temp
+from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist,persistMusics,getpersistMusics,deletepersistMusics,save_migrate_data_into_redis_temp,get_migrate_data_from_redis_temp,delete_playlist
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
@@ -322,7 +322,7 @@ async def edit_playlist(request: Request):
         body = await request.json()
         playlist = body.get("playlist")
         user = body.get("user")
-        original_name = body.get("originalName")  # 👈 handle originalName from frontend
+        original_name = body.get("originalName")  # handle originalName from frontend
 
         if not playlist or not user:
             raise HTTPException(status_code=400, detail="Missing playlist or user")
@@ -333,6 +333,11 @@ async def edit_playlist(request: Request):
     except Exception as e:
         print(f"Error in edit_playlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/playlist/Delete")
+async def delete_playlist_endpoint(request: Request):
+    return await delete_playlist(request, redis_client)
+
 # @app.post("/playlist/new")
 # async def addPlaylistWithData(request: Request):
 #     try:
@@ -535,7 +540,6 @@ def get_app_version():
         return JSONResponse(content={
             "version": version_info["latestVersion"],
             "minSupportedVersion": version_info["minSupportedVersion"],
-            "forceUpdate": version_info["forceUpdate"],
             "updateUrl": version_info["updateUrl"]
         })
     except Exception as e:
