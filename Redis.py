@@ -1,5 +1,9 @@
 import redis.asyncio as redis
+from fastapi import Request, HTTPException
 import json
+# import logging
+# logger = logging.getLogger("uvicorn.error")
+
 async def CreateEmptyPlaylist(redis_client, playlist,user):
     try:
         playlist_name = playlist.get("name")
@@ -64,7 +68,57 @@ async def EditPlaylist(redis_client, playlist, user, original_name=None):
         
     except Exception as e:
         return {"type": "error", "message": str(e)}
+    
+async def delete_playlist(request: Request, redis_client):
+    try:
+        body = await request.json()
+        playlist_id = str(body.get("playlistId"))
+        user = body.get("user")
 
+        if not playlist_id or not user:
+            raise HTTPException(status_code=400, detail="Missing playlistId or user")
+
+        pattern = f"user:{user}:playlist:*"
+        keys = await redis_client.keys(pattern)
+
+        deleted = False
+        playlist_name_to_delete = None
+
+        for key in keys:
+            value = await redis_client.get(key)
+            if value is None:
+                continue
+
+            try:
+                playlist_data = json.loads(value)
+            except json.JSONDecodeError:
+                continue
+
+            # Match by internal playlist ID
+            if str(playlist_data.get("id")) == playlist_id:
+                # Extract playlist name from the key
+                key_str = key.decode('utf-8') if isinstance(key, bytes) else key
+                playlist_name_to_delete = key_str.split(':')[-1]  # Get the last part after the last ':'
+                
+                # Delete the playlist key
+                await redis_client.delete(key)
+                
+                # Remove the playlist name from the set (not the ID!)
+                await redis_client.srem(f"user:{user}:playlists:set", playlist_name_to_delete)
+                
+                deleted = True
+                print(f"Deleted playlist: {playlist_name_to_delete} with ID: {playlist_id}")
+                break
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+
+        return {"status": "success", "deleted": True, "playlist_name": playlist_name_to_delete}
+
+    except Exception as e:
+        print(f"Error in delete_playlist: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 async def storeData(redis_client,playlist_name,new_song,user):
     try:
         key = f"user:{user}:playlist:{playlist_name}"
