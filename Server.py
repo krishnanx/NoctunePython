@@ -370,10 +370,10 @@ async def addMusic(request: Request):
         body = await request.json()
         user = body.get("user")
         playlist = body.get("data")
-        playlist_name = playlist["name"]
-        print("playlist name:", playlist_name)
+        playlist_id = playlist["id"]
+        print("playlist id:", playlist_id)
         new_song = body.get("music")
-        response = await storeData(redis_client,playlist_name,new_song,user)
+        response = await storeData(redis_client,playlist_id,new_song,user)
         return response
     except Exception as e:
         print("adding music to playlist didnt work",e)

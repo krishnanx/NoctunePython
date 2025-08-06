@@ -13,7 +13,7 @@ async def CreateEmptyPlaylist(redis_client, playlist,user):
         playlist_id= playlist.get("id")
         playlist_time= playlist.get("Time")
         playlist_isPlaying= playlist.get("isPlaying")
-        key = f"user:{user}:playlist:{playlist_name}"
+        key = f"user:{user}:playlist:{playlist_id}"
         existing = await redis_client.get(key)
         if existing:
             # Playlist exists, load it
@@ -27,7 +27,7 @@ async def CreateEmptyPlaylist(redis_client, playlist,user):
                 "songs": playlist_songs,
                 "Time": playlist_time,
                 "isPlaying": playlist_isPlaying}
-            await redis_client.sadd(f"user:{user}:playlists:set", playlist_name)
+            await redis_client.sadd(f"user:{user}:playlists:set", playlist_id)
         
         # Save updated playlist back to Redis
         await redis_client.set(key, json.dumps(playlist))
@@ -119,9 +119,9 @@ async def delete_playlist(request: Request, redis_client):
         print(f"Error in delete_playlist: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     
-async def storeData(redis_client,playlist_name,new_song,user):
+async def storeData(redis_client,playlist_id,new_song,user):
     try:
-        key = f"user:{user}:playlist:{playlist_name}"
+        key = f"user:{user}:playlist:{playlist_id}"
         existing = await redis_client.get(key)
         if existing:
             playlist = json.loads(existing)
@@ -129,16 +129,17 @@ async def storeData(redis_client,playlist_name,new_song,user):
             playlist["songs"].append(new_song)
             playlist["Time"] = playlist["Time"] + new_song["duration"]
         else:
-            playlist = {
-                "Time": None,
-                "desc": "",
-                "id": None,
-                "image": None,
-                "isPlaying": False,
-                "name": playlist_name,
-                "songs": [new_song]
-            }
-            await redis_client.sadd("playlists:set", playlist_name)
+            # playlist = {
+            #     "Time": None,
+            #     "desc": "",
+            #     "id": None,
+            #     "image": None,
+            #     "isPlaying": False,
+            #     "name": playlist_name,
+            #     "songs": [new_song]
+            # }
+            print("no playlists")
+            # await redis_client.sadd("playlists:set", playlist_name)
         print("Playlist after adding song:",playlist)
         await redis_client.set(key, json.dumps(playlist))
         return {"type":"success"}
@@ -196,13 +197,13 @@ async def deletepersistMusics(redis_client, user):
 async def get_all_playlists_as_array(redis_client,user):
     try:
         print(user)
-        playlist_names = await redis_client.smembers(f"user:{user}:playlists:set")
-        print(playlist_names)
+        playlist_id = await redis_client.smembers(f"user:{user}:playlists:set")
+        print(playlist_id)
         playlists = []
         
-        for name_bytes in playlist_names:
-            playlist_name = name_bytes.decode() if isinstance(name_bytes, bytes) else name_bytes
-            key = f"user:{user}:playlist:{playlist_name}"
+        for name_bytes in playlist_id:
+            playlist_id = name_bytes.decode() if isinstance(name_bytes, bytes) else name_bytes
+            key = f"user:{user}:playlist:{playlist_id}"
             data = await redis_client.get(key)
             
             if data:
@@ -210,7 +211,7 @@ async def get_all_playlists_as_array(redis_client,user):
             else:
                 playlist_data = []
             
-            playlists.append({"name":playlist_name,"value": playlist_data})
+            playlists.append({"id":playlist_id,"value": playlist_data})
         print(playlists)
     except Exception as e:
         print("error",e)

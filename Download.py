@@ -231,6 +231,12 @@ async def download_youtube_audio(items: list[dict], client_id: str):
                             },
                             "clientId": client_id
                         }))
+                        
+                        await ws.send(json.dumps({
+                                "type": "progress",
+                                "value": {"index": index, "percent": 100},
+                                "clientId": client_id
+                            }))
 
                         result["files"].append(full_path)
                         print(f"[DEBUG] Successfully processed item {index}")
