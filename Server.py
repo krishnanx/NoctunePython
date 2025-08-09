@@ -333,10 +333,18 @@ async def edit_playlist(request: Request):
     except Exception as e:
         print(f"Error in edit_playlist: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
 @app.post("/playlist/Delete")
 async def delete_playlist_endpoint(request: Request):
-    return await delete_playlist(request, redis_client)
+    body = await request.json()
+    playlist_id = str(body.get("playlistId"))
+    user = body.get("user")
+
+    return await delete_playlist(user, playlist_id, redis_client)
+    
+# @app.post("/playlist/Delete")
+# async def delete_playlist_endpoint(request: Request):
+#     return await delete_playlist(request, redis_client)
 
 # @app.post("/playlist/new")
 # async def addPlaylistWithData(request: Request):
