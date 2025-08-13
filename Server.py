@@ -1,5 +1,5 @@
 import yt_dlp as youtube_dl  # Keep for ffmpeg reconnect options
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, HTTPException, Request, Header, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 import asyncio
 import subprocess
@@ -9,24 +9,48 @@ import uuid
 import unicodedata
 import time
 import json
+import yt_dlp
 from Download import download_youtube_audio 
 from spotify_meta import get_spotify_metadata
-from Redis import CreateEmptyPlaylist,get_all_playlists_as_array
+from Redis import CreateEmptyPlaylist,get_all_playlists_as_array,storeData,EditPlaylist,persistMusics,getpersistMusics,deletepersistMusics,save_migrate_data_into_redis_temp,get_migrate_data_from_redis_temp,delete_playlist
 import redis.asyncio as redis
 from dotenv import load_dotenv
 import asyncpg
+from yt_dlp import YoutubeDL
+from Waveform import extract_waveform_array,get_direct_audio_url
+import numpy as np
+from redis_cache import generate_waveform_cached
+from pydantic import BaseModel
+import lyricsgenius
+
+
+
 app = FastAPI()
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GENIUS_API_TOKEN = os.getenv("GENIUS_API_TOKEN")
 
+
+genius = lyricsgenius.Genius(
+    GENIUS_API_TOKEN,
+    timeout=15,                     # maximum time (in seconds) to wait for a response
+    retries=3,                      # no.of retry to make
+    remove_section_headers=True,
+    skip_non_songs=True,
+)
+
+class LyricsRequest(BaseModel):
+    artist: str
+    title: str
 
 @app.on_event("startup")
 async def startup():
     global redis_client
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6380))
     redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
+    print("Connected to Redis at:", redis_client.connection_pool.connection_kwargs)
     global db_pool
     # DATABASE_URL = os.getenv("DATABASE_URL")
     try:
@@ -158,6 +182,7 @@ async def stream_audio(request: Request):
     try:
         end_time = time.time()
         duration = end_time - start_time
+        print("url:", url)
         print(f"⏱️ Metadata fetch took {duration:.2f} seconds.")
         generator = stream_ffmpeg_audio(info["direct_url"])
     except Exception as e:
@@ -178,6 +203,65 @@ def warmConnection():
 
 @app.post("/download")
 async def download(request: Request, client_id: str = Header(..., alias="client-id")):
+    try:
+        body = await request.json()
+        data = body["data"]
+        print(f"[DEBUG] Received data: {data}")
+        print(f"[DEBUG] Data type: {type(data)}")
+        print(f"[DEBUG] Client ID: {client_id}")
+        
+        # Handle both list of URLs and list of objects with metadata
+        items = []
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, str):
+                    # Simple URL string - create basic item object
+                    items.append({
+                        "url": item,
+                        "title": f"Track_{len(items)}",
+                        "uploader": "Unknown Artist",
+                        "artist": None,
+                        "image": None
+                    })
+                elif isinstance(item, dict):
+                    # Already an object with metadata - ensure required fields exist
+                    items.append({
+                        "url": item.get("url", ""),
+                        "title": item.get("title", f"Track_{len(items)}"),
+                        "uploader": item.get("uploader", "Unknown Artist"),
+                        "artist": item.get("artist"),
+                        "image": item.get("image")
+                    })
+                else:
+                    raise ValueError(f"Invalid item type: {type(item)}. Expected string URL or object.")
+        else:
+            raise ValueError("Expected 'data' to be a list of URLs or objects.")
+        
+        print(f"[DEBUG] Processed {len(items)} items for download")
+        
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Missing 'data' field in request body")
+    except Exception as e:
+        print(f"[ERROR] Request parsing error: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid request format: {str(e)}")
+
+    try:
+        result = await download_youtube_audio(items, client_id)
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=500, detail=result["error"])
+
+        return JSONResponse({
+            "message": "All downloads complete",
+            "files": [os.path.basename(f) for f in result["files"]],
+            "status": "success"
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Download processing error: {e}")
+        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
+
+
     try:
         body = await request.json()
         urls = body["data"]
@@ -203,12 +287,15 @@ async def fetch_spotify_metadata(request: Request):
     try:
         body = await request.json()
         playlist_url = body.get("data")
+        user = body.get("user")
+        print("spotify url:",playlist_url)
+        print("user",user)
         if not playlist_url:
             raise HTTPException(status_code=400, detail="Missing 'data' with Spotify playlist URL")
 
-        metadata = await asyncio.to_thread(get_spotify_metadata, playlist_url)
+        metadata = await get_spotify_metadata(playlist_url,user)
         print("lessgoo")
-        return metadata
+        return {"status":True}
 
     except Exception as e:
         print("spotDL error:", e)
@@ -228,6 +315,37 @@ async def add_new_playlist(request: Request):
         return 1
     except Exception as e:
         print(e)
+
+@app.post("/playlist/editPlaylist")
+async def edit_playlist(request: Request):
+    try:
+        body = await request.json()
+        playlist = body.get("playlist")
+        user = body.get("user")
+        original_name = body.get("originalName")  # handle originalName from frontend
+
+        if not playlist or not user:
+            raise HTTPException(status_code=400, detail="Missing playlist or user")
+
+        response = await EditPlaylist(redis_client, playlist, user, original_name)
+        return response  # send the response directly
+
+    except Exception as e:
+        print(f"Error in edit_playlist: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/playlist/Delete")
+async def delete_playlist_endpoint(request: Request):
+    body = await request.json()
+    playlist_id = str(body.get("playlistId"))
+    user = body.get("user")
+
+    return await delete_playlist(user, playlist_id, redis_client)
+    
+# @app.post("/playlist/Delete")
+# async def delete_playlist_endpoint(request: Request):
+#     return await delete_playlist(request, redis_client)
+
 # @app.post("/playlist/new")
 # async def addPlaylistWithData(request: Request):
 #     try:
@@ -254,6 +372,183 @@ async def pullplaylists( request: Request):
         return response
     except Exception as e:
         print(e)
+@app.post("/playlist/addMusic")
+async def addMusic(request: Request):
+    try:
+        body = await request.json()
+        user = body.get("user")
+        playlist = body.get("data")
+        playlist_id = playlist["id"]
+        print("playlist id:", playlist_id)
+        new_song = body.get("music")
+        response = await storeData(redis_client,playlist_id,new_song,user)
+        return response
+    except Exception as e:
+        print("adding music to playlist didnt work",e)
+
+@app.post("/redis/searchedMusic")
+async def addsearchedMusic(request:Request):
+    try:
+        body = await request.json()
+        user = body.get("user")
+        searchedMusics = body.get("data")
+        
+        
+        response = await persistMusics(redis_client,searchedMusics,user)
+        return response
+    except Exception as e:
+        print("adding music to playlist didnt work",e)
+
+@app.post("/redis/getsearchedMusic")
+async def getSearchedMusics(request:Request):
+    try:
+        body = await request.json()
+        user = body.get("user")
+
+        response = await getpersistMusics(redis_client,user)
+        return response
+    except Exception as e:
+        print(e)
+
+
+@app.post("/api/lyrics")
+async def fetch_lyrics(req: LyricsRequest):
+    try:
+        print("fn called")
+        song = genius.search_song(title=req.title, artist=req.artist)
+        if song and song.lyrics:
+            return {"lyrics": song.lyrics}
+        else:
+            return {"error": "Lyrics not found"}
+    except Exception as e:
+        return {"error": str(e)}
+@app.post("/api/save")
+
+async def save_data(request: Request):
+    body = await request.json()
+    client_id = body.get("clientId")
+    data = body.get("data")
+
+    # Save the data (e.g., to Redis, database, etc.)
+    print(f"Saving data for client {client_id}: {data}")
+    response = await save_migrate_data_into_redis_temp(redis_client,data,client_id)
+
+
+    return {"status": "success", "message": "Data saved successfully"}
+@app.get("/api/check")
+async def check_pending_data(clientId: str = Query(...)):
+    response = await get_migrate_data_from_redis_temp(redis_client,client_id = clientId)
+    if response is not None:
+        return {"status":True,"response":response}
+    else:
+        return {"status":False,"response":response}
+
+@app.post("/yt/waveform")
+async def get_waveform(request: Request):
+    print("waveform")
+    start_time = time.time()
+    try:
+        body = await request.json()
+        
+        yt_url = body.get("data")
+        if not yt_url:
+            raise HTTPException(status_code=400, detail="Missing 'data' (YouTube URL)")
+
+        
+        waveform = await generate_waveform_cached(yt_url, redis_client)
+        if not waveform:
+            waveform = await generate_waveform(yt_url)
+            await redis_client.set(yt_url, json.dumps(waveform))
+        end_time = time.time()  # ✅ End timer
+        duration = end_time - start_time
+        print(f"⏱️ Waveform generation took {duration:.2f} seconds.")
+
+        return {"waveform": waveform}
+
+    except Exception as e:
+        print("Waveform error:", e)
+        raise HTTPException(status_code=500, detail=f"Waveform error: {str(e)}")
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("Server:app", host="0.0.0.0", port=7000, reload=True)
+
+@app.post("/redis/deletepersistMusic")
+async def delete_persist_music(request:Request):
+    try:
+        body = await request.json()
+        user = body.get("user")
+        if not user:
+            return {"success": False, "error": "Missing user ID"}
+        response = await deletepersistMusics(redis_client, user)
+        return response
+    except Exception as e:
+        print("Error in delete_persist_music:", e)
+        return {"success": False, "error": str(e)}
+
+# Blocking function
+def get_direct_audio_url(yt_url):
+    ydl_opts = {
+        'quiet': True,
+        'format': 'bestaudio[ext=m4a]/bestaudio/best', #[ext=webm
+        'noplaylist': True,
+    }
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(yt_url, download=False)
+        return info['url']
+
+# Blocking function
+def extract_waveform_array(audio_url):
+    with tempfile.NamedTemporaryFile(suffix=".raw") as tmpfile:
+        raw_path = tmpfile.name
+
+        # ffmpeg
+        cmd = [
+            "ffmpeg", "-y", "-i", audio_url,
+            "-t","30",
+            "-f", "s16le",
+            "-acodec", "pcm_s16le",
+            "-ac", "1",
+            "-ar", "8000",
+            "-loglevel", "quiet",
+            raw_path,
+        ]
+        subprocess.run(cmd, check=True)
+
+        with open(raw_path, "rb") as f:
+            pcm_data = np.frombuffer(f.read(), dtype=np.int16)
+            abs_amplitude = np.abs(pcm_data)
+
+            segment_size = len(abs_amplitude) // 200
+            waveform = [
+                int(np.mean(abs_amplitude[i:i + segment_size]) / 32767 * 100)
+                for i in range(0, len(abs_amplitude), segment_size)
+            ]
+            return waveform[:200]
+
+# Async wrapper to avoid blocking FastAPI
+async def generate_waveform(yt_url):
+    loop = asyncio.get_event_loop()
+
+    def task():
+        audio_url = get_direct_audio_url(yt_url)
+        return extract_waveform_array(audio_url)
+
+    return await loop.run_in_executor(None, task)
+
+@app.get("/app-version")
+def get_app_version():
+    try:
+        base_dir = os.path.dirname(__file__)
+        json_path = os.path.join(base_dir, "config", "app_version.json")
+        
+        with open(json_path, "r") as f:
+            version_info = json.load(f)
+        
+        # Transform to match frontend expectation
+        return JSONResponse(content={
+            "version": version_info["latestVersion"],
+            "minSupportedVersion": version_info["minSupportedVersion"],
+            "updateUrl": version_info["updateUrl"]
+        })
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
