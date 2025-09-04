@@ -48,26 +48,30 @@ class LyricsRequest(BaseModel):
 async def startup():
     global redis_client
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", 6380))
-    redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
-    print("Connected to Redis at:", redis_client.connection_pool.connection_kwargs)
-    global db_pool
-    # DATABASE_URL = os.getenv("DATABASE_URL")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+
+    redis_client = redis.Redis(
+        host=REDIS_HOST,
+        port=REDIS_PORT,
+        db=0,
+        decode_responses=True,
+        socket_keepalive=True
+    )
+
     try:
-        await redis_client.ping()
-        # db_pool = await asyncpg.create_pool(DATABASE_URL)
-        print("🔗 Connected to Redis")
+        pong = await redis_client.ping()
+        print("🔗 Connected to Redis:", pong)
     except Exception as e:
         print(f"Redis connection failed: {e}")
+        redis_client = None
+
 
 @app.on_event("shutdown")
 async def shutdown():
+    global redis_client
     if redis_client:
         await redis_client.close()
-        await db_pool.close()
         print("🔌 Redis connection closed")
-
-
 
 def sanitize_header_value(value: str):
     """Make header values safe ASCII."""
