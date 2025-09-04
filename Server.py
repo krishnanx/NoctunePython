@@ -48,7 +48,7 @@ class LyricsRequest(BaseModel):
 async def startup():
     global redis_client
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", 6380))
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
     redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
     print("Connected to Redis at:", redis_client.connection_pool.connection_kwargs)
     global db_pool
