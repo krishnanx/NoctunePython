@@ -46,6 +46,7 @@ class LyricsRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup():
+
     global redis_client
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
@@ -61,6 +62,7 @@ async def startup():
     try:
         pong = await redis_client.ping()
         print("🔗 Connected to Redis:", pong)
+        asyncio.create_task(listen_for_expiry())
     except Exception as e:
         print(f"Redis connection failed: {e}")
         redis_client = None
@@ -556,3 +558,47 @@ def get_app_version():
         })
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+    
+@app.post("/ping/{user_id}")
+async def ping(user_id: str):
+    print("user is pinged",user_id)
+    await redis_client.set(f"user:{user_id}:heartbeat", 1, ex=1200)
+    return {"status": "ok"}
+
+
+async def listen_for_expiry():
+    pubsub = redis_client.pubsub()
+    await pubsub.psubscribe("__keyevent@0__:expired")
+
+    async for message in pubsub.listen():
+        if message is None:
+            continue
+
+        if message["type"] == "pmessage":
+            expired_key = message["data"]
+            if expired_key.startswith("user:") and expired_key.endswith(":heartbeat"):
+                user_id = expired_key.split(":")[1]
+                # Cleanup user data
+                user_playlist_set = f"user:{user_id}:playlists:set"
+
+                # 1. Delete all individual playlists
+                playlist_ids = await redis_client.smembers(user_playlist_set)
+                for pid in playlist_ids:
+                    await redis_client.delete(f"user:{user_id}:playlist:{pid}")
+
+                # 2. Delete the playlist set itself
+                await redis_client.delete(user_playlist_set)
+
+                # 3. Delete searched music cache
+                await redis_client.delete(f"user:{user_id}:searched")
+
+                # 4. Delete migration data for this client if exists
+                await redis_client.hdel("hashMap:migratePlaylist", user_id)  # assuming client_id == user
+
+                # Optional: delete waveform cache if you want to free space
+                # This is global, so only if you want to clear cached files generated for this user
+                # keys = await redis_client.keys(f"yt:waveform:*")
+                # for key in keys:
+                #     await redis_client.delete(key)
+
+                print(f"Cleaned up data for user {user_id}")
