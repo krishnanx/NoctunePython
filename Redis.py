@@ -133,15 +133,20 @@ async def getpersistMusics(redis_client, user):
         key = f"user:{user}:searched"
 
         existing = await redis_client.get(key)
-        if existing is not None:
-            searched = existing.decode("utf-8")  # decode bytes to str
-            print(searched)
-            return searched
-        else:
-            return "[]"  # or return an empty list as JSON string
+        if existing is None:
+            return []
+
+        # Redis may return bytes or str depending on client config
+        if isinstance(existing, bytes):
+            existing = existing.decode("utf-8")
+
+        print(existing)
+        return json.loads(existing)
+
     except Exception as e:
         print("Error:", e)
-        return "[]"
+        return []
+
     
 async def deletepersistMusics(redis_client, user):
     try:
@@ -224,5 +229,6 @@ async def get_migrate_data_from_redis_temp(redis_client, client_id):
     except Exception as e:
         print(f"Error retrieving data for client {client_id}: {e}")
         return None
+
 
 
