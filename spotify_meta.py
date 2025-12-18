@@ -5,6 +5,7 @@ import tempfile
 import os
 import asyncio
 import websockets
+import traceback
 EXPRESS_WS_URL = "ws://127.0.0.1:80/download-progress"
 async def get_spotify_metadata(playlist_url: str,user):
     print(1)
@@ -12,8 +13,7 @@ async def get_spotify_metadata(playlist_url: str,user):
         raise RuntimeError("spotdl is not installed or not found in PATH.")
 
     #Step 1: Save track URLs from playlist
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".spotdl") as tmp_file:
-        save_file_path = tmp_file.name
+    save_file_path = f"play_{user}.spotdl"
     # with open('play.spotdl','w') as file:
     #     pass
     try:
@@ -23,21 +23,26 @@ async def get_spotify_metadata(playlist_url: str,user):
             ping_timeout=20,
             ping_interval=30
         ) as ws:
-            with open('play.spotdl', 'w') as file:
+            with open(save_file_path, 'w') as file:
                 file.truncate(0)
-            save_result = subprocess.run(
-                ['spotdl', 'save', playlist_url,'--playlist-retain-track-cover', '--fetch-albums', '--save-file', 'play.spotdl'],
+           # Runs SpotDL save in a thread so it doesn't block the event loop
+            save_result = await asyncio.to_thread(
+                subprocess.run,
+                ['spotdl', 'save', playlist_url, '--playlist-retain-track-cover', '--save-file', save_file_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                timeout=60
+                text=True
             )
+            print("\n--- SPOTDL DEBUG ---")
+            print("RETURN CODE:", save_result.returncode)
+            print("STDERR:", save_result.stderr)
+            print("---------------------\n")
 
             print(save_result.stdout)
             # Optional: Print outputs for debugging
             print("[INFO] spotdl save stdout:")
             # ✅ Extract only serializable fields
-            with open('play.spotdl','r') as file:
+            with open(save_file_path,'r') as file:
                 content = file.read()
                 # print(content)
                 data_dict = json.loads(content)
@@ -102,7 +107,13 @@ async def get_spotify_metadata(playlist_url: str,user):
         #         raise RuntimeError(f"Invalid JSON from spotdl for track {track_url}:\n{raw_output}")
 
         # return metadata
+    except Exception as e:
+        print("\n[ERROR STACKTRACE] ===========================")
+        traceback.print_exc()
+        print("==============================================\n")
     finally:
+        if os.path.exists(save_file_path):
+            os.remove(save_file_path)
         print("Done")
 def get_youtube_url(song_name, artist_name):
         # Construct the search query
