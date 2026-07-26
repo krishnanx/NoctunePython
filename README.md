@@ -1,129 +1,298 @@
-# NoctunePython - FastAPI Server for Noctune
+<div align="center">
 
-NoctunePython is the FastAPI backend for **Noctune**, a free and open-source music streaming app. This backend acts as a bridge between third-party services and the Noctune frontend, providing core functionality like playlist migration, streaming, and downloading of music.
+# 🎵 Noctune Backend
+
+### High-performance FastAPI backend powering the Noctune music streaming ecosystem
+
+*A scalable backend responsible for music streaming, playlist migration, downloads, waveform generation, metadata management, and real-time communication.*
+
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-Async-green)
+![Redis](https://img.shields.io/badge/Redis-Cache-red)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-Audio-orange)
+![yt-dlp](https://img.shields.io/badge/yt--dlp-Streaming-yellow)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
+
+</div>
 
 ---
 
-## 🔄 Noctune Sync - Migrating Spotify Playlists
+# Overview
 
-Noctune Sync enables users to migrate their existing Spotify playlists to the Noctune platform.
+The **Noctune Backend** is the core service behind the Noctune music application. It provides APIs for streaming music, downloading tracks, migrating Spotify playlists, generating waveforms, retrieving lyrics, and managing user playlists.
 
-### How it works:
+Rather than storing copyrighted media, the backend intelligently integrates multiple services to fetch metadata, stream audio, and enrich the listening experience.
 
-1. The frontend collects the link for Spotify playlist.
-2. The backend receives this link via a POST request.
-3. Each music from the playlist is extracted.
-4. Each track is converted into a YouTube search query (e.g., "Blinding Lights The Weeknd").
-5. `yt_dlp` is used to search and extract the best audio source from YouTube.
-6. Metadata such as title, thumbnail, duration, and URL are fetched.
-7. The backend responds with a list of enriched tracks ready for import into the Noctune library.
+---
 
+# Features
 
 ## 🎧 Music Streaming
 
-Streams music in real-time from YouTube directly to the Noctune frontend.
-
-### How it works:
-
-* Accepts a YouTube URL as a query parameter.
-* Uses `yt_dlp` to extract the direct audio stream.
-* Streams audio through FFmpeg, which pipes and converts it to a supported format (e.g., `.m4a`).
-* The client receives a seamless audio stream for playback.
-
-### Endpoint:
-
-```
-GET /stream?url=<YouTubeURL>
-```
-
-Returns:
-
-* Audio stream (`audio/mpeg` or `audio/mp4`)
+- Low-latency audio streaming
+- Direct YouTube audio extraction
+- FFmpeg transcoding pipeline
+- Automatic reconnection handling
+- High-quality MP3 streaming
 
 ---
 
-## 💾 Music Downloading
+## 📥 Music Downloads
 
-Allows users to download music from YouTube for offline listening.
+- Download songs from YouTube
+- Automatic metadata embedding
+- Album artwork support
+- Artist and album information
+- Download progress via WebSockets
 
-### How it works:
+---
 
-* Accepts a POST request with the YouTube URL and desired filename.
-* Downloads audio using `yt_dlp` and stores it in a structured directory.
-* The file is named and cached to prevent repeated downloads.
-* Returns the path of the downloaded file.
+## 🔄 Spotify Playlist Migration
 
-### Endpoint:
+Migrate Spotify playlists into Noctune in a few steps.
 
-```
-POST /download
-```
+The backend:
 
-Payload:
+- Reads Spotify playlist metadata
+- Extracts song information
+- Finds the best YouTube match
+- Returns playable tracks
+- Preserves playlist ordering
 
-```json
-{
-  "url": "https://youtube.com/watch?v=...",
-  "title": "Blinding Lights"
-}
-```
+---
 
-Response:
+## 📊 Waveform Generation
 
-```json
-{
-  "status": "downloaded",
-  "path": "/downloads/blinding_lights.m4a"
-}
+Generate waveform data used by the Noctune player.
+
+Features include:
+
+- Audio analysis
+- Cached waveform generation
+- Faster repeat requests
+- Optimized for mobile visualization
+
+---
+
+## 🎤 Lyrics Integration
+
+Retrieve synchronized song lyrics using the Genius API.
+
+Supports:
+
+- Artist lookup
+- Song lookup
+- Clean lyric formatting
+
+---
+
+## 📚 Playlist Management
+
+Backend support for:
+
+- Playlist creation
+- Playlist editing
+- Playlist deletion
+- Persistent storage
+- Redis caching
+
+---
+
+## ⚡ Redis Cache
+
+Redis is used for:
+
+- Temporary playlist migration
+- Cached waveform data
+- Session storage
+- Faster API responses
+
+---
+
+# Architecture
+
+```text
+                    Noctune Mobile App
+                             │
+                             │ REST API
+                             ▼
+                    FastAPI Backend
+                             │
+     ┌───────────────┬───────────────┬───────────────┐
+     │               │               │               │
+     ▼               ▼               ▼               ▼
+ Streaming      Downloads      Playlist Sync     Lyrics
+     │               │               │               │
+ yt-dlp         FFmpeg         Spotify API      Genius API
+     │
+     ▼
+ YouTube Audio
+
+               │
+               ▼
+      Waveform Generation
+               │
+               ▼
+          Redis Cache
 ```
 
 ---
 
-## 🧠 Future Plans - Music Recommendations
+# Project Structure
 
-The backend will soon support intelligent music recommendations powered by audio embeddings and user behavior analysis.
-
-* Embedding models (e.g., Musicnn, OpenL3)
-* Track similarity via vector distance
-* Feedback signals (skip, boost) to refine recommendations
-
-### Planned Endpoint:
-
-```
-POST /recommend
-```
-
----
-
-## 📂 Repository Structure (Simplified)
-
-```
-NoctunePython/
-├── app/
-│   ├── main.py              # FastAPI entrypoint
-│   ├── routes/
-│   │   ├── stream.py        # Audio streaming endpoint
-│   │   ├── download.py      # Downloading logic
-│   │   └── sync.py          # Noctune Sync handler
-│   └── services/            # yt_dlp, ffmpeg, utils
+```text
+NoctuneBackend
+│
+├── Server.py              # FastAPI application
+├── Download.py            # Download pipeline
+├── Waveform.py            # Waveform extraction
+├── Redis.py               # Playlist management
+├── redis_cache.py         # Redis caching
+├── spotify_meta.py        # Spotify metadata
+├── HashMap.py
+├── config/
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## 🛠️ Tech Stack
+# Technology Stack
 
-* **FastAPI** for building async APIs
-* **yt\_dlp** for YouTube scraping
-* **FFmpeg** for stream conversion and audio handling
-
+| Technology | Purpose |
+|------------|----------|
+| FastAPI | Backend API |
+| Python | Core application |
+| yt-dlp | Audio extraction |
+| FFmpeg | Audio transcoding |
+| Redis | Caching |
+| AsyncPG | Database connectivity |
+| WebSockets | Download progress |
+| Genius API | Lyrics |
+| Mutagen | Audio metadata |
 
 ---
 
-## 👨‍💻 Author
+# Streaming Pipeline
 
-Developed and maintained by [Krishnan](https://github.com/krishnanx)
+```text
+Client Request
+      │
+      ▼
+FastAPI Endpoint
+      │
+      ▼
+yt-dlp extracts audio URL
+      │
+      ▼
+FFmpeg transcodes stream
+      │
+      ▼
+StreamingResponse
+      │
+      ▼
+Noctune Player
+```
 
-Feel free to contribute, raise issues, or suggest enhancements!
+---
 
+# Download Pipeline
+
+```text
+User downloads song
+        │
+        ▼
+yt-dlp downloads audio
+        │
+        ▼
+Embed metadata
+        │
+        ▼
+Download album artwork
+        │
+        ▼
+Attach ID3 tags
+        │
+        ▼
+Notify client through WebSocket
+```
+
+---
+
+# Installation
+
+## Clone the repository
+
+```bash
+git clone https://github.com/krishnanx/NoctunePython.git
+cd NoctunePython
+```
+
+## Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+## Environment Variables
+
+Create a `.env` file containing:
+
+```env
+SUPABASE_URL=
+SUPABASE_KEY=
+REDIS_HOST=
+REDIS_PORT=
+GENIUS_API_TOKEN=
+```
+
+## Start Redis
+
+```bash
+redis-server
+```
+
+## Run the server
+
+```bash
+uvicorn Server:app --reload
+```
+
+---
+
+# API Highlights
+
+| Endpoint | Description |
+|----------|-------------|
+| `/stream` | Stream music |
+| `/download` | Download tracks |
+| `/lyrics` | Fetch lyrics |
+| Playlist APIs | Manage playlists |
+| Migration APIs | Import Spotify playlists |
+
+---
+
+# Future Improvements
+
+- Authentication
+- Background task queue
+- Adaptive bitrate streaming
+- Audio caching
+- Recommendation engine
+- Search indexing
+- Docker deployment
+- Kubernetes support
+
+---
+
+# Author
+
+**Krishnan E**
+
+GitHub: https://github.com/krishnanx
+
+---
+
+# License
+
+This project is open source and intended for educational and personal use.
